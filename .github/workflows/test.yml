@@ -1,0 +1,69 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - tonistiigi/binfmt:latest
+          - tonistiigi/binfmt:master
+        platform:
+          - arm64
+          - arm
+          - riscv64
+          - mips64el
+          - mips64
+          - s390x
+          - ppc64le
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Enable ${{ matrix.platform }} platform
+        id: qemu
+        run: |
+          docker run --privileged --rm ${{ matrix.image }} --install ${{ matrix.platform }} | tee platforms.json
+          echo "::set-output name=platforms::$(cat platforms.json)"
+      - name: Set test image
+        id: image
+        run: |
+          case ${{ matrix.platform }} in
+            arm64)
+              platform=linux/${{ matrix.platform }}
+              image=arm64v8/alpine
+              ;;
+            arm)
+              platform=linux/${{ matrix.platform }}
+              image=arm32v7/alpine
+              ;;
+            ppc64le)
+              platform=linux/${{ matrix.platform }}
+              image=ppc64le/alpine
+              ;;
+            s390x)
+              platform=linux/${{ matrix.platform }}
+              image=s390x/alpine
+              ;;
+            riscv64)
+              platform=linux/amd64 # improper image metadata
+              image=tonistiigi/debian:riscv
+              ;;
+            mips64el)
+              platform=linux/mips64le
+              image=mips64le/debian
+              ;;
+            *)
+              echo "no image for ${{ matrix.platform }}" 1>&2
+              exit 1
+              ;;
+          esac
+          echo "::set-output name=platform::${platform}"
+          echo "::set-output name=name::${image}"
+      - name: Test platform
+        run: docker run --platform ${{ steps.image.outputs.platform }} --rm ${{ steps.image.outputs.name }} uname -a
